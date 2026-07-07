@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        .tab-active { border-bottom: 3px solid #22c55e; color: #22c55e; } /* Vert Flash VPN */
+        .tab-active { border-bottom: 3px solid #22c55e; color: #22c55e; }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans">
@@ -104,12 +104,31 @@
             resultsContainer.classList.add('hidden');
             loader.classList.remove('hidden');
 
-            const apiUrl = `https://searx.space/backend/search?q=${encodeURIComponent(query)}&category=${currentCategory}&format=json&language=fr-FR`;
+            // Utilisation du proxy public AllOrigins pour scraper proprement DuckDuckGo HTML (Zéro blocage)
+            const apiUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query))}`;
 
             try {
                 const response = await fetch(apiUrl);
                 const data = await response.json();
-                displayResults(data.results);
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(data.contents, 'text/html');
+                const links = doc.querySelectorAll('.links_main');
+                
+                let formattedResults = [];
+                links.forEach(link => {
+                    const titleElem = link.querySelector('.result__a');
+                    const snippetElem = link.nextElementSibling?.querySelector('.result__snippet');
+                    if (titleElem) {
+                        formattedResults.push({
+                            title: titleElem.textContent,
+                            url: titleElem.getAttribute('href'),
+                            content: snippetElem ? snippetElem.textContent : 'Aucune description disponible.'
+                        });
+                    }
+                });
+
+                displayResults(formattedResults);
             } catch (error) {
                 console.error("Erreur :", error);
                 resultsContainer.innerHTML = `<p class="text-red-400 text-center font-mono text-sm">⚠️ Échec du routage sécurisé. Veuillez relancer la recherche.</p>`;
@@ -128,38 +147,27 @@
                 return;
             }
 
-            if (currentCategory === 'images') {
-                const grid = document.createElement('div');
-                grid.className = "grid grid-cols-2 md:grid-cols-3 gap-4";
-                results.forEach(res => {
-                    if(res.img_src) {
-                        grid.innerHTML += `
-                            <a href="${res.url}" target="_blank" class="group block bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-green-500/40 transition-all">
-                                <img src="${res.img_src}" alt="${res.title}" class="w-full h-48 object-cover bg-slate-800" onerror="this.src='https://placehold.co/300?text=Image+Protégée'">
-                                <div class="p-3 text-xs text-slate-300 truncate group-hover:text-green-400">${res.title || 'Image'}</div>
-                            </a>`;
-                    }
-                });
-                resultsContainer.appendChild(grid);
-            } else {
-                results.forEach(res => {
-                    const cleanUrl = new URL(res.url).hostname;
-                    const item = document.createElement('div');
-                    item.className = "bg-slate-900/40 p-5 rounded-2xl border border-slate-900 hover:border-slate-800 transition-all shadow-sm";
-                    
-                    item.innerHTML = `
-                        <div class="text-xs text-green-400/80 mb-1 flex items-center gap-2 font-mono">
-                            <i class="fa-solid fa-lock text-[10px]"></i>
-                            <span>${cleanUrl}</span>
-                        </div>
-                        <a href="${res.url}" target="_blank" class="text-lg font-bold text-slate-100 hover:text-green-400 transition-colors block mb-2 leading-tight">
-                            ${res.title}
-                        </a>
-                        <p class="text-sm text-slate-400 leading-relaxed">${res.content || res.length || 'Contenu masqué pour votre sécurité.'}</p>
-                    `;
-                    resultsContainer.appendChild(item);
-                });
-            }
+            results.forEach(res => {
+                let cleanUrl = 'Lien sécurisé';
+                try {
+                    cleanUrl = new URL(res.url).hostname;
+                } catch(e) {}
+                
+                const item = document.createElement('div');
+                item.className = "bg-slate-900/40 p-5 rounded-2xl border border-slate-900 hover:border-slate-800 transition-all shadow-sm";
+                
+                item.innerHTML = `
+                    <div class="text-xs text-green-400/80 mb-1 flex items-center gap-2 font-mono">
+                        <i class="fa-solid fa-lock text-[10px]"></i>
+                        <span>${cleanUrl}</span>
+                    </div>
+                    <a href="${res.url}" target="_blank" class="text-lg font-bold text-slate-100 hover:text-green-400 transition-colors block mb-2 leading-tight">
+                        ${res.title}
+                    </a>
+                    <p class="text-sm text-slate-400 leading-relaxed">${res.content}</p>
+                `;
+                resultsContainer.appendChild(item);
+            });
         }
     </script>
 </body>
